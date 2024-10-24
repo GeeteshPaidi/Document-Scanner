@@ -1,13 +1,8 @@
 import cv2 as cv
 import numpy as np
 import streamlit as st
-from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
-import av
 
-# Set up Streamlit page configuration
 st.set_page_config(page_title="SNAPnFIX", page_icon="📄", layout="wide")
-
-# App styling
 st.markdown("""
     <style>
     .main-title {
@@ -26,117 +21,127 @@ st.markdown("""
         text-align: center;
         margin-bottom: 20px;
     }
+    .button-area {
+        text-align: center;
+        margin-top: 20px;
+    }
+    .highlight {
+        background-color: #2a2a2a;
+        border-radius: 10px;
+        padding: 10px;
+    }
     </style>
 """, unsafe_allow_html=True)
 
 st.markdown('<div class="main-title">📄 SNAPnFIX: Document Scanner and Fixer</div>', unsafe_allow_html=True)
 
-# Parameters for document detection
-contour_area_threshold = 0.3 * 640 * 480
+frame_width = 640
+frame_height = 480
+contour_area = 0.3 * frame_width * frame_height
 
-# Preprocess the image
-def pre_process_image(img):
+# Preprocessing the image
+def pre_processing(img):
     img_gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
-    img_blur = cv.GaussianBlur(img_gray, (5, 5), 0)
-    img_canny = cv.Canny(img_blur, 75, 150)
+    img_blur = cv.GaussianBlur(img_gray, (3, 3), 1)
+    img_canny = cv.Canny(img_blur, 30, 150)
     kernel = np.ones((5, 5))
-    img_dilated = cv.dilate(img_canny, kernel, iterations=2)
-    img_eroded = cv.erode(img_dilated, kernel, iterations=1)
-    return img_eroded
+    img_dial = cv.dilate(img_canny, kernel, iterations=3)
+    img_erode = cv.erode(img_dial, kernel, iterations=1)
+    return img_erode
 
-# Detect document contours
-def find_document_contours(img):
+# Detect and draw contours
+def draw_contour(img):
     contours, _ = cv.findContours(img, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
     for cnt in contours:
         area = cv.contourArea(cnt)
-        if area > contour_area_threshold:
+        if area > contour_area:
             peri = cv.arcLength(cnt, True)
             approx = cv.approxPolyDP(cnt, 0.02 * peri, True)
-            if len(approx) == 4:
+            if area > contour_area and len(approx) == 4:
                 return approx
-    return None
+    return np.array([])
 
-# Reorder points for perspective transformation
-def reorder_points(points):
-    points = points.reshape((4, 2))
-    new_points = np.zeros((4, 1, 2), np.int32)
-    add = points.sum(axis=1)
-    new_points[0] = points[np.argmin(add)]  # Top-left
-    new_points[3] = points[np.argmax(add)]  # Bottom-right
-    diff = np.diff(points, axis=1)
-    new_points[1] = points[np.argmin(diff)]  # Top-right
-    new_points[2] = points[np.argmax(diff)]  # Bottom-left
-    return new_points
+# Reordering points for perspective transformation
+def reorder(my_points):
+    my_points = my_points.reshape((4, 2))
+    my_points_new = np.zeros((4, 1, 2), np.int32)
+    add = my_points.sum(1)
+    my_points_new[0] = my_points[np.argmin(add)]  # Top-left
+    my_points_new[3] = my_points[np.argmax(add)]  # Bottom-right
+    diff = np.diff(my_points, axis=1)
+    my_points_new[1] = my_points[np.argmin(diff)]  # Top-right
+    my_points_new[2] = my_points[np.argmax(diff)]  # Bottom-left
+    return my_points_new
 
-# Apply perspective transform to warp the document
-def warp_document(img, points):
-    points = reorder_points(points)
-    pts1 = np.float32(points)
-    x, y, w, h = cv.boundingRect(points)
+# Perspective transform for warping the document
+def get_warp(img, captured_img):
+    captured_img = reorder(captured_img)
+    pts1 = np.float32(captured_img)
+    x, y, w, h = cv.boundingRect(captured_img)
     pts2 = np.float32([[0, 0], [w, 0], [0, h], [w, h]])
     matrix = cv.getPerspectiveTransform(pts1, pts2)
-    img_warped = cv.warpPerspective(img, matrix, (w, h))
+    img_output = cv.warpPerspective(img, matrix, (w, h))
 
-    # Sharpen the image
+    # Sharpening kernel for text clarity
     sharpening_kernel = np.array([[-1, -1, -1], [-1, 9, -1], [-1, -1, -1]])
-    img_sharpened = cv.filter2D(img_warped, -1, sharpening_kernel)
-    return img_sharpened
+    img_output = cv.filter2D(img_output, -1, sharpening_kernel)
 
-# Video processing class
-class DocumentScanner(VideoProcessorBase):
-    def __init__(self):
-        self.result_img = None
+    return img_output
 
-    def recv(self, frame):
-        img = frame.to_ndarray(format="bgr24")
-        processed_img = pre_process_image(img)
-        contours = find_document_contours(processed_img)
-
-        if contours is not None:
-            self.result_img = warp_document(img, contours)
-            return av.VideoFrame.from_ndarray(cv.cvtColor(self.result_img, cv.COLOR_BGR2RGB), format="rgb24")
-        else:
-            return av.VideoFrame.from_ndarray(cv.cvtColor(img, cv.COLOR_BGR2RGB), format="rgb24")
-
-# Main layout with columns for webcam and upload functionality
-col1, col2 = st.columns(2)
+# Main layout: Two columns side by side for webcam capture and file upload
+col1, col2 = st.columns([1, 1])
 
 with col1:
     st.markdown('<div class="header">Capture Document Using Webcam 📷</div>', unsafe_allow_html=True)
+    run = st.button('Start Document Capture')
 
-    webrtc_ctx = webrtc_streamer(
-        key="document-scanner",
-        video_processor_factory=DocumentScanner,
-        media_stream_constraints={"video": True, "audio": False},
-        async_processing=True
-    )
+    FRAME_WINDOW = st.image([])
 
-    if webrtc_ctx.video_processor:
-        if webrtc_ctx.video_processor.result_img is not None:
-            scanned_img = webrtc_ctx.video_processor.result_img
-            _, buffer = cv.imencode('.png', scanned_img)
-            byte_data = buffer.tobytes()
-            st.image(cv.cvtColor(scanned_img, cv.COLOR_BGR2RGB), caption="Scanned Document", use_column_width=True)
-            st.download_button("Download Scanned Image", byte_data, "scanned_image.png", "image/png", key="webcam_download")
-        else:
-            st.info("Align the document correctly in front of the camera.")
+    if run:
+        cap = cv.VideoCapture(0)
+        cap.set(3, frame_width)
+        cap.set(4, frame_height)
+        cap.set(10, 150)
+
+        with st.spinner('Capturing...'):
+            while run:
+                success, img = cap.read()
+                if not success:
+                    st.error("Failed to capture image")
+                    break
+
+                result_img = pre_processing(img)
+                final_img = draw_contour(result_img)
+
+                if final_img.size != 0:
+                    warp_img = get_warp(img, final_img)
+                    FRAME_WINDOW.image(cv.cvtColor(warp_img, cv.COLOR_BGR2RGB), channels="RGB")
+                    _, buffer = cv.imencode('.png', warp_img)
+                    byte_data = buffer.tobytes()
+                    st.image(cv.cvtColor(img, cv.COLOR_BGR2RGB), caption="Original Image", use_column_width=False)
+                    st.success("Document detected and captured!")
+                    st.download_button("Download Scanned Image", byte_data, "scanned_image.png", "image/png", key="webcam_download")
+                    break
+                else:
+                    FRAME_WINDOW.image(cv.cvtColor(img, cv.COLOR_BGR2RGB), channels="RGB")
+
+        cap.release()
 
 with col2:
     st.markdown('<div class="header">Upload an Image 🖼</div>', unsafe_allow_html=True)
     uploaded_file = st.file_uploader("Choose an image...", type=['jpg', 'jpeg', 'png'])
 
     if uploaded_file is not None:
-        img = cv.imdecode(np.frombuffer(uploaded_file.read(), np.uint8), cv.IMREAD_COLOR)
-        processed_img = pre_process_image(img)
-        contours = find_document_contours(processed_img)
+        img = cv.imdecode(np.frombuffer(uploaded_file.read(), np.uint8), 1)
+        result_img = pre_processing(img)
+        final_img = draw_contour(result_img)
 
-        if contours is not None:
-            scanned_img = warp_document(img, contours)
+        if final_img.size != 0:
+            warp_img = get_warp(img, final_img)
             col1_upload, col2_upload = st.columns(2)
-
             with col1_upload:
-                st.image(cv.cvtColor(scanned_img, cv.COLOR_BGR2RGB), caption="Scanned Document", use_column_width=True)
-                _, buffer = cv.imencode('.png', scanned_img)
+                st.image(cv.cvtColor(warp_img, cv.COLOR_BGR2RGB), caption="Scanned Document", use_column_width=True)
+                _, buffer = cv.imencode('.png', warp_img)
                 byte_data = buffer.tobytes()
                 st.download_button("Download Scanned Image", byte_data, "scanned_image.png", "image/png", key="upload_download")
 
