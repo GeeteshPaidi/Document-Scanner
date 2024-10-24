@@ -1,7 +1,9 @@
+# importing necessary libraries
 import cv2 as cv
 import numpy as np
 import streamlit as st
 
+# setting up streamlit for some good visuals
 st.set_page_config(page_title="SNAPnFIX", page_icon="📄", layout="wide")
 st.markdown("""
     <style>
@@ -35,21 +37,22 @@ st.markdown("""
 
 st.markdown('<div class="main-title">📄 SNAPnFIX: Document Scanner and Fixer</div>', unsafe_allow_html=True)
 
+# this can be played with
 frame_width = 640
 frame_height = 480
 contour_area = 0.3 * frame_width * frame_height
 
-# Preprocessing the image
+# preprocessing the image
 def pre_processing(img):
     img_gray = cv.cvtColor(img, cv.COLOR_BGR2GRAY)
-    img_blur = cv.GaussianBlur(img_gray, (3, 3), 1)
+    img_blur = cv.GaussianBlur(img_gray, (3, 3), 1)  # to reduce noice
     img_canny = cv.Canny(img_blur, 30, 150)
     kernel = np.ones((5, 5))
-    img_dial = cv.dilate(img_canny, kernel, iterations=3)
+    img_dial = cv.dilate(img_canny, kernel, iterations=3) # to increase the visibility of border
     img_erode = cv.erode(img_dial, kernel, iterations=1)
     return img_erode
 
-# Detect and draw contours
+# detect and draw contours
 def draw_contour(img):
     contours, _ = cv.findContours(img, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE)
     for cnt in contours:
@@ -57,11 +60,11 @@ def draw_contour(img):
         if area > contour_area:
             peri = cv.arcLength(cnt, True)
             approx = cv.approxPolyDP(cnt, 0.02 * peri, True)
-            if area > contour_area and len(approx) == 4:
+            if area > contour_area and len(approx) == 4: # 4 coz box has 4 sides
                 return approx
     return np.array([])
 
-# Reordering points for perspective transformation
+# reordering points for perspective transformation
 def reorder(my_points):
     my_points = my_points.reshape((4, 2))
     my_points_new = np.zeros((4, 1, 2), np.int32)
@@ -73,22 +76,22 @@ def reorder(my_points):
     my_points_new[2] = my_points[np.argmax(diff)]  # Bottom-left
     return my_points_new
 
-# Perspective transform for warping the document
+# perspective transform for warping the document
 def get_warp(img, captured_img):
     captured_img = reorder(captured_img)
     pts1 = np.float32(captured_img)
-    x, y, w, h = cv.boundingRect(captured_img)
+    x, y, w, h = cv.boundingRect(captured_img)    # this would make the output image size fit with scanned document
     pts2 = np.float32([[0, 0], [w, 0], [0, h], [w, h]])
     matrix = cv.getPerspectiveTransform(pts1, pts2)
     img_output = cv.warpPerspective(img, matrix, (w, h))
 
-    # Sharpening kernel for text clarity
+    # sharpening kernel for text clarity
     sharpening_kernel = np.array([[-1, -1, -1], [-1, 9, -1], [-1, -1, -1]])
     img_output = cv.filter2D(img_output, -1, sharpening_kernel)
 
     return img_output
 
-# Main layout: Two columns side by side for webcam capture and file upload
+# main layout
 col1, col2 = st.columns([1, 1])
 
 with col1:
