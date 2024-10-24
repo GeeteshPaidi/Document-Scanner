@@ -47,7 +47,7 @@ Follow these simple steps to get SNAPnFIX up and running on your local machine:
 1. **Clone the Repository**  
    Start by cloning the SNAPnFIX repository (you'll need to have Git installed):
    ```bash
-   git clone <repository-url>
+   git clone <https://github.com/GeeteshPaidi/SNAPnFIX-Document-Scanner.git>
 2. **Navigate to the Project Directory**    
    Move into the directory where the project files are stored:
    ```bash
