@@ -48,19 +48,15 @@ Follow these simple steps to get SNAPnFIX up and running on your local machine:
    Start by cloning the SNAPnFIX repository (you'll need to have Git installed):
    ```bash
    git clone <https://github.com/GeeteshPaidi/SNAPnFIX-Document-Scanner.git>
-2. **Navigate to the Project Directory**    
-   Move into the directory where the project files are stored:
-   ```bash
-   cd SNAPnFIX
-3. **Install the Dependencies**   
+2. **Install the Dependencies**   
    Install the required Python packages listed in the `requirements.txt` file:
    ```bash
    pip install -r requirements.txt
-4. **Run the Application**   
+3. **Run the Application**   
    Once everything is set up, you can run the Streamlit app:
    ```bash
    streamlit run app.py
-5. **Access the App**     
+4. **Access the App**     
    After running the command, your browser should automatically open the SNAPnFIX app. If not, visit the local URL provided in the terminal (usually `http://localhost:8501`).
 
 ### How to Use the App
