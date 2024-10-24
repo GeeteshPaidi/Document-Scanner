@@ -66,7 +66,7 @@ def reorder(my_points):
     my_points_new[3] = my_points[np.argmax(add)]  # Bottom-right
     diff = np.diff(my_points, axis=1)
     my_points_new[1] = my_points[np.argmin(diff)]  # Top-right
-    my_points_new[2] = my points[np.argmax(diff)]  # Bottom-left
+    my_points_new[2] = my_points[np.argmax(diff)]  # Bottom-left
     return my_points_new
 
 # Perspective transform for warping the document
