@@ -1,7 +1,7 @@
 import cv2 as cv
 import numpy as np
 import streamlit as st
-from streamlit_webrtc import webrtc_streamer, VideoTransformerBase
+from streamlit_webrtc import webrtc_streamer, VideoProcessorBase
 import av
 
 st.set_page_config(page_title="SNAPnFIX", page_icon="📄", layout="wide")
@@ -84,22 +84,22 @@ def get_warp(img, captured_img):
 
     return img_output
 
-# Transformer class to process the video frames
-class DocumentScanner(VideoTransformerBase):
+# Processor class to handle video frames
+class DocumentScanner(VideoProcessorBase):
     def __init__(self):
         self.result_img = None
         self.final_img = None
 
-    def transform(self, frame):
+    def recv(self, frame):
         img = frame.to_ndarray(format="bgr24")
         result_img = pre_processing(img)
         final_img = draw_contour(result_img)
         if final_img.size != 0:
             warp_img = get_warp(img, final_img)
             self.result_img = warp_img
-            return cv.cvtColor(warp_img, cv.COLOR_BGR2RGB)
+            return av.VideoFrame.from_ndarray(cv.cvtColor(warp_img, cv.COLOR_BGR2RGB), format="bgr24")
         else:
-            return img
+            return av.VideoFrame.from_ndarray(img, format="bgr24")
 
 # Main layout: Two columns side by side for webcam capture and file upload
 col1, col2 = st.columns([1, 1])
@@ -108,12 +108,12 @@ with col1:
     st.markdown('<div class="header">Capture Document Using Webcam 📷</div>', unsafe_allow_html=True)
 
     # Using streamlit-webrtc for cloud-compatible webcam capture
-    webrtc_ctx = webrtc_streamer(key="document-scanner", video_transformer_factory=DocumentScanner, 
+    webrtc_ctx = webrtc_streamer(key="document-scanner", video_processor_factory=DocumentScanner, 
                                  media_stream_constraints={"video": True, "audio": False})
 
-    if webrtc_ctx.video_transformer:
-        if webrtc_ctx.video_transformer.result_img is not None:
-            warp_img = webrtc_ctx.video_transformer.result_img
+    if webrtc_ctx.video_processor:
+        if webrtc_ctx.video_processor.result_img is not None:
+            warp_img = webrtc_ctx.video_processor.result_img
             _, buffer = cv.imencode('.png', warp_img)
             byte_data = buffer.tobytes()
             st.image(cv.cvtColor(warp_img, cv.COLOR_BGR2RGB), caption="Scanned Document")
